@@ -268,7 +268,7 @@ isoTAX <- function(input=NULL,
     }
     
     #Add columns of interest to lookup table
-    suppressWarnings(fetch.list.df <- dplyr::bind_rows(fetch.list, .id = "column_label") %>%
+                  fetch.list.df <- dplyr::bind_rows(fetch.list, .id = "column_label") %>%
                        rowwise() %>%
                        mutate(NCBI_txid = unlist(strsplit(unlist(strsplit(INSDSeq_feature_table, 'INSDQualifier_name~db_xref||INSDQualifier_value~taxon:', fixed=TRUE))[2], '|', fixed=TRUE))[1]) %>%
                        mutate(isolation_source = unlist(strsplit(unlist(strsplit(INSDSeq_feature_table, 'isolation_source||INSDQualifier_value~', fixed=TRUE))[2], '|', fixed=TRUE))[1]) %>%
@@ -283,17 +283,36 @@ isoTAX <- function(input=NULL,
                        mutate(taxonomy = gsub(";[A-Za-z]+deae;", ";", taxonomy, perl=TRUE)) %>% #Remove subclass rank
                        mutate(taxonomy = gsub("ales;[A-Za-z]+neae;", "ales;", taxonomy, perl=TRUE)) %>% #Remove suborder ranks
                        mutate(taxonomy = gsub("aceae;[A-Za-z]+eae;", "aceae;", taxonomy, perl=TRUE)) %>% #Remove tribe ranks
-                       mutate(rank_domain = stringr::str_split_fixed(.$taxonomy, ";", 6)[,1]) %>%
-                       mutate(rank_phylum = stringr::str_split_fixed(.$taxonomy, ";", 6)[,2]) %>%
+                       mutate(rank_domain = stringr::str_split_fixed(.$taxonomy, ";", 6)[,1])
+                       
+                       if (db != "16S"){
+                       fetch.list.df <- fetch.list.df %>% mutate(rank_phylum = stringr::str_split_fixed(.$taxonomy, ";", 6)[,2]) %>%
                        mutate(rank_class = stringr::str_split_fixed(.$taxonomy, ";", 6)[,3]) %>%
                        mutate(rank_order = stringr::str_split_fixed(.$taxonomy, ";", 6)[,4]) %>%
                        mutate(rank_family = stringr::str_split_fixed(.$taxonomy, ";", 6)[,5]) %>%
-                       mutate(rank_genus = stringr::str_split_fixed(.$taxonomy, ";", 6)[,6]) %>%
-                       mutate(rank_species = gsub("'", "", species)) %>% #Replace instances where single quotations are in species name
-                       mutate(genus_tmp = stringr::str_split_fixed(rank_species, " ", 2)[,1]) %>% #Fixing instances where genus is in wrong spot
-                       mutate(genus_tmp = gsub("\\[|\\]", "", genus_tmp)) %>% #Fixing instances where genus is in wrong spot
-                       mutate(rank_phylum = ifelse(genus_tmp == rank_phylum, "", rank_phylum)) %>% #Fixing instances where genus is in wrong spot
-                       mutate(rank_class = ifelse( genus_tmp == rank_class, "", rank_class)) %>% #Fixing instances where genus is in wrong spot
+                       mutate(rank_genus = stringr::str_split_fixed(.$taxonomy, ";", 6)[,6]) 
+                       }else if(db == "16S"){
+                        #Only adding taxonomy fix for 16S atm as not sure if fungi,etc. is different
+                        #There are actually 7 parts, not 6
+                        fetch.list.df <- fetch.list.df %>% mutate(rank_kingdom = stringr::str_split_fixed(.$taxonomy, ";", 7)[,2]) %>%
+                        mutate(rank_phylum = stringr::str_split_fixed(.$taxonomy, ";", 7)[,3]) %>%
+                        mutate(rank_class = stringr::str_split_fixed(.$taxonomy, ";", 7)[,4]) %>%
+                        mutate(rank_order = stringr::str_split_fixed(.$taxonomy, ";", 7)[,5]) %>%
+                        mutate(rank_family = stringr::str_split_fixed(.$taxonomy, ";", 7)[,6])
+                       }
+                       
+                       #Continue on with the mutation
+                       #Replace instances where single quotations are in species name
+                       fetch.list.df <- fetch.list.df %>% mutate(rank_species = gsub("'", "", species)) %>% 
+                       #Fixing instances where genus is in wrong spot
+                       mutate(genus_tmp = stringr::str_split_fixed(rank_species, " ", 2)[,1]) %>% 
+                       #Fixing instances where genus is in wrong spot
+                       mutate(genus_tmp = gsub("\\[|\\]", "", genus_tmp)) %>% 
+                       #Fixing instances where genus is in wrong spot
+                       mutate(rank_phylum = ifelse(genus_tmp == rank_phylum, "", rank_phylum)) %>% 
+                       #Fixing instances where genus is in wrong spot
+                       #I understand that this is probably accounting for missing family but I feel like this is going to lead to disaster one day. Considering taking this part out, and waiting for a bug that would require this
+                       mutate(rank_class = ifelse( genus_tmp == rank_class, "", rank_class)) %>% 
                        mutate(rank_order = ifelse(genus_tmp == rank_order, "", rank_order)) %>% #Fixing instances where genus is in wrong spot
                        mutate(rank_family = ifelse(genus_tmp == rank_family, "", rank_family)) %>% #Fixing instances where genus is in wrong spot
                        mutate(rank_family = ifelse(grepl("aceae$", rank_order), rank_order, rank_family)) %>% #Fixing family upward
@@ -305,9 +324,9 @@ isoTAX <- function(input=NULL,
                        mutate(species = gsub(" ", "_", species)) %>% #Replace spaces in species name
                        mutate(rank_genus = stringr::str_split_fixed(species, "_", 2)[,1]) %>%
                        mutate(INSDSeq_taxonomy = paste(rank_domain, rank_phylum, rank_class, rank_order, rank_family, rank_genus, rank_species, sep=";")) %>%
-                       mutate_at(vars(rank_class, rank_order, rank_family), funs(ifelse(. == "", "NA", .))) %>% #Replace unknown ranks with "NA"
+                       #Replace unknown ranks with "NA"
+                       mutate(across(c(rank_class, rank_order, rank_family), ~ ifelse(. == "", "NA", .))) %>% 
                        mutate(species = paste(stringr::str_split_fixed(INSDSeq_organism, " ", 3)[,1],stringr::str_split_fixed(INSDSeq_organism, " ", 3)[,2], sep=" "))
-    )
     
     #::::::::::::::::::::::::::::::::
     if(db=="cpn60"){fetch.list.df$INSDSeq_accession_version <- stringr::str_split_fixed(fetch.list.df$INSDSeq_accession_version, "[.]", 2)[,1]}
@@ -418,4 +437,3 @@ isoTAX <- function(input=NULL,
   ######################################
   
 }
-
